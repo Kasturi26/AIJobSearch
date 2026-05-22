@@ -1,170 +1,133 @@
 import streamlit as st
-from tools.helper import extract_text_from_pdf, ask_openai
+from tools.helper import extract_text_from_pdf, ask_openai, analyze_resume_comprehensive
 from tools.job_api import fetch_linkedin_jobs, fetch_naukri_jobs
+from styles import DARK_THEME_STYLES
+import re
+
+def format_content_as_html(content):
+    """Convert text content with numbered sections into formatted HTML"""
+    if not content:
+        return content
+    
+    # Split by numbered sections
+    lines = content.split('\n')
+    html_content = []
+    in_list = False
+    
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+            
+        # Check for main numbered section (e.g., "*1. Section Title*")
+        if re.match(r'^\*+\d+\.', stripped):
+            if in_list:
+                html_content.append('</ul>')
+                in_list = False
+            # Format as h4 header
+            title = re.sub(r'^\*+|\*+$', '', stripped)
+            html_content.append(f'<h4>{title}</h4>')
+        
+        # Check for table-like items with pipe separators (e.g., "| Item | Content |")
+        elif '|' in stripped and stripped.count('|') >= 2:
+            item_parts = [p.strip() for p in stripped.split('|') if p.strip()]
+            if len(item_parts) >= 2:
+                if in_list:
+                    html_content.append('</ul>')
+                    in_list = False
+                # Format as section item with left border
+                html_content.append(f'<div class="section-item"><strong>{item_parts[0]}</strong><br>{" | ".join(item_parts[1:])}</div>')
+            else:
+                # Regular line
+                if not in_list:
+                    html_content.append('<ul>')
+                    in_list = True
+                html_content.append(f'<li>{stripped}</li>')
+        
+        # Check for bullet or list items (starting with ** or -)
+        elif stripped.startswith('**') or stripped.startswith('-') or stripped.startswith('*'):
+            if not in_list:
+                html_content.append('<ul>')
+                in_list = True
+            clean_line = re.sub(r'^[\*\-\s]+', '', stripped)
+            html_content.append(f'<li>{clean_line}</li>')
+        
+        # Regular content
+        else:
+            if in_list:
+                html_content.append('</ul>')
+                in_list = False
+            html_content.append(f'<p>{stripped}</p>')
+    
+    # Close list if still open
+    if in_list:
+        html_content.append('</ul>')
+    
+    return '\n'.join(html_content)
 
 st.set_page_config(page_title="Job Recommender", page_icon="💼", layout="wide")
 
-# Custom CSS for better styling
-st.markdown("""
-    <style>
-        /* Main container */
-        .main {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        }
-        
-        /* Header styling */
-        .header-title {
-            font-size: 3em;
-            font-weight: bold;
-            color: #667eea;
-            text-align: center;
-            margin-bottom: 0.5em;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
-        }
-        
-        .header-subtitle {
-            font-size: 1.1em;
-            color: #555;
-            text-align: center;
-            margin-bottom: 2em;
-            line-height: 1.6;
-        }
-        
-        /* Card styling */
-        .card {
-            background: linear-gradient(135deg, #ffffff 0%, #f8f9ff 100%);
-            padding: 25px;
-            border-radius: 15px;
-            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.15);
-            border-left: 5px solid #667eea;
-            margin: 15px 0;
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
-        }
-        
-        .card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 12px 35px rgba(102, 126, 234, 0.25);
-        }
-        
-        .card-title {
-            font-size: 1.5em;
-            font-weight: 600;
-            color: #667eea;
-            margin-bottom: 15px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        
-        .card-content {
-            font-size: 1em;
-            color: #333;
-            line-height: 1.8;
-        }
-        
-        /* Button styling */
-        .stButton>button {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            border-radius: 25px;
-            padding: 12px 30px;
-            font-weight: 600;
-            font-size: 1.05em;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
-        }
-        
-        .stButton>button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.6);
-        }
-        
-        /* File uploader styling */
-        .uploadedFile {
-            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-            border-radius: 10px;
-            padding: 20px;
-        }
-        
-        /* Badge styling */
-        .badge {
-            display: inline-block;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 5px 15px;
-            border-radius: 20px;
-            font-size: 0.9em;
-            font-weight: 600;
-            margin: 5px 5px 5px 0;
-        }
-        
-        .job-card {
-            background: white;
-            padding: 20px;
-            margin: 10px 0;
-            border-radius: 12px;
-            border-left: 4px solid #667eea;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.08);
-            transition: all 0.3s ease;
-        }
-        
-        .job-card:hover {
-            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.2);
-            transform: translateX(5px);
-        }
-        
-        .job-title {
-            font-size: 1.2em;
-            font-weight: 700;
-            color: #667eea;
-            margin-bottom: 8px;
-        }
-        
-        .job-company {
-            font-size: 1.05em;
-            font-weight: 600;
-            color: #764ba2;
-            margin-bottom: 8px;
-        }
-        
-        .job-meta {
-            color: #777;
-            font-size: 0.95em;
-            display: flex;
-            gap: 15px;
-            flex-wrap: wrap;
-        }
-        
-        .section-divider {
-            height: 3px;
-            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-            border-radius: 2px;
-            margin: 30px 0;
-        }
-    </style>
-""", unsafe_allow_html=True)
+# Clear any cached data to ensure fresh load
+st.cache_data.clear()
+
+# Load styling from styles.py
+st.markdown(DARK_THEME_STYLES, unsafe_allow_html=True)
 
 # Header Section
-col1, col2, col3 = st.columns([1, 2, 1])
-with col2:
-    st.markdown('<div class="header-title">💼 AI Job Recommender System</div>', unsafe_allow_html=True)
+st.markdown('<div class="header-title">Find Your <span class="highlight-text">Dream Job</span><br>with AI</div>', unsafe_allow_html=True)
 
 st.markdown("""
     <div class="header-subtitle">
-    🚀 Powered by AI | Find your dream job based on your skills<br>
-    <small>Upload your resume and get personalized job recommendations from top job portals</small>
+    Upload your resume, get AI analysis of your skills, experiences, and credentials to recommend jobs that are perfect for you.
     </div>
 """, unsafe_allow_html=True)
+
+# Feature Boxes Section
+st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+
+feature_col1, feature_col2, feature_col3 = st.columns(3)
+with feature_col1:
+    st.markdown("""
+        <div class="feature-box">
+            <div class="feature-icon">🎯</div>
+            <div class="feature-title">Smart Matching</div>
+            <div class="feature-desc">Intelligent matching with jobs</div>
+        </div>
+    """, unsafe_allow_html=True)
+
+with feature_col2:
+    st.markdown("""
+        <div class="feature-box">
+            <div class="feature-icon">📊</div>
+            <div class="feature-title">NLP Scores</div>
+            <div class="feature-desc">Advanced text analysis</div>
+        </div>
+    """, unsafe_allow_html=True)
+
+with feature_col3:
+    st.markdown("""
+        <div class="feature-box">
+            <div class="feature-icon">⚡</div>
+            <div class="feature-title">Instant Results</div>
+            <div class="feature-desc">Get recommendations instantly</div>
+        </div>
+    """, unsafe_allow_html=True)
 
 # File Upload Section
 st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
 
-col1, col2, col3 = st.columns([1, 2, 1])
-with col2:
-    st.markdown("### 📄 Upload Your Resume")
-    uploaded_file = st.file_uploader("Select a PDF file", type=["pdf"], help="Upload your resume in PDF format")
+st.markdown("### 📄 Upload Your Resume")
+
+upload_col1, upload_col2, upload_col3 = st.columns([0.5, 2, 0.5])
+with upload_col2:
+    st.markdown("""
+        <div class="upload-section">
+            <div class="upload-icon">📤</div>
+            <div class="upload-text">Drag & drop your resume here</div>
+            <div class="upload-subtext">or click to browse files</div>
+        </div>
+    """, unsafe_allow_html=True)
+    uploaded_file = st.file_uploader("", type=["pdf"], label_visibility="collapsed", help="Upload your resume in PDF format")
 
 if uploaded_file:
     # Progress indicators
@@ -177,23 +140,36 @@ if uploaded_file:
         resume_text = extract_text_from_pdf(uploaded_file)
     progress_bar.progress(25)
     
-    # Step 2: Summarize
-    status_text.text("📊 Step 2/4: Analyzing and summarizing...")
+    # Step 2: Comprehensive Analysis
+    status_text.text("📊 Step 2/4: Analyzing resume with ATS Analyzer...")
     with st.spinner("🔄 Processing..."):
-        summary = ask_openai(f"Summarize the following resume highlighting the skills, education and experience in a few sentences:\n\n{resume_text}", max_tokens=80)
+        analysis_result = analyze_resume_comprehensive(resume_text)
     progress_bar.progress(50)
     
-    # Step 3: Skill Gaps
-    status_text.text("📊 Step 3/4: Identifying skill gaps...")
+    # Step 3: Extract Summary
+    status_text.text("📊 Step 3/4: Extracting professional summary...")
     with st.spinner("🔄 Processing..."):
-        skill_gaps = ask_openai(f"Analyze this resume and highlight missing skills, certification and experiences needed for better job opportunities:\n\n{resume_text}", max_tokens=80)
+        summary = ask_openai(f"Provide a brief professional summary of this person based on the resume:\n\n{resume_text}\n\nSummary (2-3 sentences):", max_tokens=500)
     progress_bar.progress(75)
     
-    # Step 4: Roadmap
-    status_text.text("📊 Step 4/4: Creating career roadmap...")
+    # Step 4: Extract Skill Gaps
+    status_text.text("📊 Step 4/4: Identifying skill gaps...")
     with st.spinner("🔄 Processing..."):
-        future_roadmap = ask_openai(f"Based on the following resume suggest a future roadmap for career development(skill to learn, certifications needed):\n\n{resume_text}", max_tokens=80)
+        skill_gaps = ask_openai(f"Based on this resume, what are the key skill gaps and areas for improvement? List them with explanations:\n\n{resume_text}\n\nSkill gaps and recommendations:", max_tokens=500)
     progress_bar.progress(100)
+    
+    # Ensure responses are not empty
+    if not analysis_result or analysis_result.strip() == "":
+        analysis_result = "Analysis is being processed. Please try again."
+    if not summary or summary.strip() == "":
+        summary = "Unable to extract summary at this time. Please ensure your resume is properly formatted."
+    if not skill_gaps or skill_gaps.strip() == "":
+        skill_gaps = "Unable to identify skill gaps at this time. Please try again."
+    
+    # Normalize whitespace - replace multiple newlines with single newline
+    analysis_result = '\n'.join(line.rstrip() for line in analysis_result.split('\n') if line.strip())
+    summary = '\n'.join(line.rstrip() for line in summary.split('\n') if line.strip())
+    skill_gaps = '\n'.join(line.rstrip() for line in skill_gaps.split('\n') if line.strip())
     
     # Clear progress indicators
     status_text.empty()
@@ -201,13 +177,9 @@ if uploaded_file:
     
     # Success notification
     st.markdown("""
-        <div style='background: linear-gradient(135deg, #84fab0 0%, #8fd3f4 100%); 
-                    padding: 15px 20px; 
-                    border-radius: 10px; 
-                    margin: 20px 0;
-                    border-left: 5px solid #2ecc71;'>
-            <h4 style='color: #27ae60; margin: 0;'>✅ Analysis Complete!</h4>
-            <p style='color: #27ae60; margin: 5px 0 0 0;'>Your resume has been successfully analyzed.</p>
+        <div class='success-notification'>
+            <h4>✅ Analysis Complete!</h4>
+            <p>Your resume has been successfully analyzed.</p>
         </div>
     """, unsafe_allow_html=True)
     
@@ -215,11 +187,24 @@ if uploaded_file:
     st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
     st.markdown("## 📈 Your Resume Analysis")
     
+    # Format content for better display
+    formatted_analysis = format_content_as_html(analysis_result)
+    formatted_summary = format_content_as_html(summary)
+    formatted_gaps = format_content_as_html(skill_gaps)
+    
+    # Full Analysis Card
+    st.markdown(f"""
+        <div class="card">
+            <div class="card-title">🔍 ATS Resume Analysis</div>
+            <div class="card-content">{formatted_analysis if formatted_analysis else 'Analyzing...'}</div>
+        </div>
+    """, unsafe_allow_html=True)
+    
     # Resume Summary Card
     st.markdown(f"""
         <div class="card">
-            <div class="card-title">👤 Resume Summary</div>
-            <div class="card-content">{summary}</div>
+            <div class="card-title">👤 Professional Summary</div>
+            <div class="card-content">{formatted_summary if formatted_summary else 'Summarizing...'}</div>
         </div>
     """, unsafe_allow_html=True)
     
@@ -227,15 +212,7 @@ if uploaded_file:
     st.markdown(f"""
         <div class="card">
             <div class="card-title">🎯 Skill Gaps & Missing Areas</div>
-            <div class="card-content">{skill_gaps}</div>
-        </div>
-    """, unsafe_allow_html=True)
-    
-    # Career Roadmap Card
-    st.markdown(f"""
-        <div class="card">
-            <div class="card-title">🗺️ Career Roadmap & Preparation</div>
-            <div class="card-content">{future_roadmap}</div>
+            <div class="card-content">{formatted_gaps if formatted_gaps else 'Identifying gaps...'}</div>
         </div>
     """, unsafe_allow_html=True)
     
@@ -244,10 +221,10 @@ if uploaded_file:
     
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        if st.button("🔍 Get Job Recommendations", use_container_width=True):
+        if st.button("✨ Analyze Resume & Find Jobs", use_container_width=True):
             with st.spinner("⏳ Extracting job keywords..."):
-                keywords = ask_openai(f"Based on this resume summary, suggest the best job titles and keywords for a searching jobs. Give a comma-separated list only no explanations:\n\n{summary}",
-                max_tokens=30)
+                keywords = ask_openai(f"Based on this resume, what are the top 5-7 job titles that would be a good fit? Return only the job titles as a comma-separated list, nothing else:\n\n{resume_text}",
+                max_tokens=150)
                 search_keywords_clean = keywords.replace("\n", "").strip()
             
             # Display keywords as badges
@@ -290,13 +267,31 @@ if uploaded_file:
                     """, unsafe_allow_html=True)
             else:
                 st.warning("⚠️ No jobs found for your keywords. Try different search terms.")
-                    st.markdown(f"Experience Required: {job.get('experience')}")
-                    st.markdown(f"Salary: {job.get('salary')}")
-                    st.markdown(f"[Apply Here]({job.get('url')})")
-                    st.markdown("-----")
-            else:
-                st.markdown("No job listings found.")
-        
-        
+
+# Bottom Features Section
+st.markdown("""
+    <div class="features-grid">
+        <div class="bottom-feature">
+            <div class="bottom-feature-icon">🤖</div>
+            <div class="bottom-feature-title">AI Powered Analysis</div>
+            <div class="bottom-feature-desc">Advanced resume analysis with AI</div>
+        </div>
+        <div class="bottom-feature">
+            <div class="bottom-feature-icon">💼</div>
+            <div class="bottom-feature-title">Top Job Matches</div>
+            <div class="bottom-feature-desc">Best curated job listings</div>
+        </div>
+        <div class="bottom-feature">
+            <div class="bottom-feature-icon">⭐</div>
+            <div class="bottom-feature-title">Personalized Results</div>
+            <div class="bottom-feature-desc">Recommendations tailored for you</div>
+        </div>
+        <div class="bottom-feature">
+            <div class="bottom-feature-icon">🔔</div>
+            <div class="bottom-feature-title">Job Alerts</div>
+            <div class="bottom-feature-desc">Stay updated with new openings</div>
+        </div>
+    </div>
+""", unsafe_allow_html=True)
 
         

@@ -1,0 +1,62 @@
+================================================================================
+EXTRACTED RESUME TEXT - 20260519_212023
+================================================================================
+
+Samruddhi Admane
+Pune, India
+ +91-9359029500  |  samruddhi.admane@gmail.com |  Linkedin - Samruddhi Admane
+Summary
+I am a Front-end Developer with 3+ years of hands-on experience in building scalable, high-performance
+web applications using React.js, Next.js, and JavaScript. Skilled in crafting responsive UIs, integrating REST
+APIs, and optimizing application performance. I focus on clean code, reusable components, and enhancing
+user experience across devices. I am a proactive and detail-oriented professional who stays up to date with
+modern technologies and focuses on delivering meaningful value.
+Technical Skills
+Libraries: React, React-Hook-Form, Axios, React-Bootstrap, Styled Components, Redux, React Routing
+Frameworks: Bootstrap, Tailwind CSS, SCSS, Node JS
+Programming Languages: JavaScript, TypeScript, HTML5, CSS3
+Backend Services: Rest Api’s
+Cloud Platform: AWS
+Testing: JEST, React testing library.
+Tools C Environments: VS Code, Webpack, Jenkins, JIRA, NPM, GIT, GitHub
+Professional Experience
+Infosys Ltd : Senior Systems Engineer
+August 2022 - Present  |  Pune, India
+Build modular UI components to streamline complex workflows across policy and claim management
+modules of Liberty Mutual Insurance using React.js, Javascript, Rest API.
+Improved rendering speed by 25–30% through optimization of component structure and conditional
+rendering techniques.
+Enhanced cross-browser accessibility and implemented responsive layouts using semantic HTML and
+modern CSS practices.
+Designed and developed an application featuring interactive dashboards and self-service modules,
+enabling members to manage healthcare plans, benefits, and appointments. 
+Implemented RESTful API integrations and loading state handling, improving user engagement and
+reliability across modules.
+Optimized rendering performance using React Hooks and code-splitting, improving overall application
+speed and responsiveness.
+Collaborated with UX and QA teams to deliver WCAG-compliant, accessible designs and ensure a
+seamless cross-platform experience 
+Implemented API-driven architecture with modular components, loaders, search, and filter functionality.
+Optimized UI performance using React Hooks and reusable components.
+Used AWS services (S3, Lambda) in React application for file storage and serverless processing.
+Participated in code reviews, version control via Git, and regularly pushed clean, tested code to GitHub
+following best practices.
+Developed unit and integration tests to maintain high code quality and reduce defects.
+Worked in an Agile development environment, actively participating in daily stand-ups, sprint planning,
+and retrospective meetings.
+Certifications
+React js frontend web development Udemy certificate
+Freecodecamp React Certification
+Infosys certified React js certification
+Oracle AI Foundation Associate Oracle Cloud
+Education
+KKW Institute of Engineeing Education and
+Research, Nashik
+BE Computer  Aug 2018 to Jun 2022     CGPA: 9.12
+Accomplishments
+Infosys Insta Rise Award Mar 2023
+
+
+================================================================================
+Total characters: 3014
+Total words: 390

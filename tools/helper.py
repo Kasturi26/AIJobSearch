@@ -1,78 +1,147 @@
 import fitz
 import os
 from dotenv import load_dotenv
-import google.generativeai as genai
+from groq import Groq
 from apify_client import ApifyClient
+from datetime import datetime
 
 load_dotenv()
-    
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('gemini-1.5-flash')
+
+client = Groq(
+    api_key=os.getenv("GROQ_API_KEY")
+)
 
 apify_client = ApifyClient(os.getenv("APIFY_API_KEY"))
 
 def extract_text_from_pdf(uploaded_file):
     """
-    Extract text from a PDF file.
+    Extract text from a PDF file with improved accuracy.
     Args:
-        uploaded_file (str): The path to the PDF file.
+        uploaded_file: The PDF file object.
     Returns:
         str: The extracted text from the PDF file.
     """
-
-    doc = fitz.open(stream=uploaded_file.read(), filetype="pdf")
     text = ""
-    for page in doc:
-        text += page.get_text()
-    return text
+    
+    try:
+        pdf_document = fitz.open(stream=uploaded_file.read(), filetype="pdf")
+        
+        for page_num, page in enumerate(pdf_document):
+            # Use "text" parameter for better text extraction
+            page_text = page.get_text("text")
+            text += page_text
+            
+        pdf_document.close()
+        
+        # Save extracted text to file for verification
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_dir = "extracted_data"
+        os.makedirs(output_dir, exist_ok=True)
+        
+        output_file = os.path.join(output_dir, f"resume_extract_{timestamp}.txt")
+        with open(output_file, "w", encoding="utf-8") as f:
+            f.write("=" * 80 + "\n")
+            f.write(f"EXTRACTED RESUME TEXT - {timestamp}\n")
+            f.write("=" * 80 + "\n\n")
+            f.write(text)
+            f.write("\n\n" + "=" * 80 + "\n")
+            f.write(f"Total characters: {len(text)}\n")
+            f.write(f"Total words: {len(text.split())}\n")
+        
+        print(f"✅ Extracted text saved to: {output_file}")
+        
+        return text
+    except Exception as e:
+        print(f"❌ Error extracting PDF: {str(e)}")
+        raise
 
-def ask_openai(prompt, max_tokens=100):
+def analyze_resume_comprehensive(resume_text):
     """
-    Send a prompt to the Gemini API and get a response.
+    Comprehensive resume analysis using Groq API.
     Args:
-        prompt (str): The prompt to send to the Gemini API.
-        max_tokens (int): The maximum number of tokens to generate in the response.
+        resume_text (str): The extracted resume text.
     Returns:
-        str: The response from the Gemini API or mock response.
+        str: The complete analysis from Groq API.
     """
     import time
     
-    # Mock responses for testing
-    mock_responses = {
-        "Summarize": "Experienced Software Engineer with 5+ years in full-stack development. Proficient in Python, JavaScript, and cloud technologies. Strong background in building scalable applications and leading technical teams.",
-        "Analyze": "Key gaps: AWS/Cloud certifications, DevOps experience. Consider: AWS certification, Docker/Kubernetes skills.",
-        "Roadmap": "6-Month Plan: Months 1-2 AWS cert, Months 3-4 Docker/Kubernetes, Months 5-6 leadership training.",
-        "Keywords": "Full Stack Developer, Python Developer, Senior Engineer, Cloud Architect"
-    }
+    prompt = f"""
+You are an ATS Resume Analyzer.
+
+Analyze ONLY the resume content provided below.
+Do NOT make up fake experience or technologies.
+Do NOT assume Python full-stack development unless explicitly mentioned.
+
+Resume Content:
+{resume_text}
+
+Provide:
+1. Professional Summary
+2. Technical Skills
+3. Skill Gaps
+4. Recommended Improvements
+
+Keep the response specific to the actual resume only"""
     
     max_retries = 3
     retry_delay = 1
     
     for attempt in range(max_retries):
         try:
-            response = model.generate_content(
-                prompt,
-                generation_config=genai.types.GenerationConfig(
-                    max_output_tokens=max_tokens,
-                    temperature=0.7
-                )
+            response = client.chat.completions.create(
+                model="openai/gpt-oss-20b",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                temperature=0.7,
+                max_tokens=2000
             )
-            return response.text
+            return response.choices[0].message.content
         except Exception as e:
             error_str = str(e)
-            if "quota" in error_str.lower() or "api_key" in error_str.lower():
-                # Return mock response instead of failing
-                if "Summarize" in prompt:
-                    return mock_responses["Summarize"]
-                elif "Analyze" in prompt:
-                    return mock_responses["Analyze"]
-                elif "roadmap" in prompt.lower():
-                    return mock_responses["Roadmap"]
-                elif "keywords" in prompt.lower():
-                    return mock_responses["Keywords"]
-                else:
-                    return "Mock response: API unavailable, using test data."
+            print(f"⚠️ API Error (Attempt {attempt + 1}/{max_retries}): {error_str}")
+            
+            if attempt < max_retries - 1:
+                time.sleep(retry_delay)
+                retry_delay *= 2
+                continue
+            raise
+
+def ask_openai(prompt, max_tokens=1000):
+    """
+    Send a prompt to the Groq API and get a response.
+    Args:
+        prompt (str): The prompt to send to the Groq API.
+        max_tokens (int): The maximum number of tokens to generate in the response.
+    Returns:
+        str: The response from the Groq API.
+    """
+    import time
+    
+    max_retries = 3
+    retry_delay = 1
+    
+    for attempt in range(max_retries):
+        try:
+            response = client.chat.completions.create(
+                model="openai/gpt-oss-20b",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                temperature=0.7,
+                max_tokens=max_tokens
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            error_str = str(e)
+            print(f"⚠️ API Error (Attempt {attempt + 1}/{max_retries}): {error_str}")
+            
             if attempt < max_retries - 1:
                 time.sleep(retry_delay)
                 retry_delay *= 2
