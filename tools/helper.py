@@ -7,11 +7,32 @@ from datetime import datetime
 
 load_dotenv()
 
-client = Groq(
-    api_key=os.getenv("GROQ_API_KEY")
-)
+_client = None
+_apify_client = None
 
-apify_client = ApifyClient(os.getenv("APIFY_API_KEY"))
+
+def _get_groq_client():
+    global _client
+    if _client is None:
+        api_key = os.getenv("GROQ_API_KEY")
+        if not api_key:
+            raise ValueError(
+                "GROQ_API_KEY is not set. Copy .env.example to .env and add your key."
+            )
+        _client = Groq(api_key=api_key)
+    return _client
+
+
+def _get_apify_client():
+    global _apify_client
+    if _apify_client is None:
+        api_key = os.getenv("APIFY_API_KEY")
+        if not api_key:
+            raise ValueError(
+                "APIFY_API_KEY is not set. Copy .env.example to .env and add your key."
+            )
+        _apify_client = ApifyClient(api_key)
+    return _apify_client
 
 def extract_text_from_pdf(uploaded_file):
     """
@@ -88,7 +109,7 @@ Keep the response specific to the actual resume only"""
     
     for attempt in range(max_retries):
         try:
-            response = client.chat.completions.create(
+            response = _get_groq_client().chat.completions.create(
                 model="openai/gpt-oss-20b",
                 messages=[
                     {
@@ -126,7 +147,7 @@ def ask_openai(prompt, max_tokens=1000):
     
     for attempt in range(max_retries):
         try:
-            response = client.chat.completions.create(
+            response = _get_groq_client().chat.completions.create(
                 model="openai/gpt-oss-20b",
                 messages=[
                     {
@@ -179,6 +200,7 @@ def ask_openai(prompt, max_tokens=1000):
                 "apifyProxyGroups": ["RESIDENTIAL"],
             }
         }
-        run = apify_client.actor("alpcnRV9YI9lYVPWk").call(run_input=run_input)
-        jobs =list(apify_client.dataset(run["defaultDatasetId"]).iterate_items())
+        apify = _get_apify_client()
+        run = apify.actor("alpcnRV9YI9lYVPWk").call(run_input=run_input)
+        jobs = list(apify.dataset(run["defaultDatasetId"]).iterate_items())
         return jobs

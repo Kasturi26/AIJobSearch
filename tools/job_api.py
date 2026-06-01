@@ -6,12 +6,34 @@ from openai import OpenAI
 from apify_client import ApifyClient
 
 load_dotenv()
-    
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
-client=OpenAI(api_key=OPENAI_API_KEY)
 
-apify_client = ApifyClient(os.getenv("APIFY_API_KEY"))
+_openai_client = None
+_apify_client = None
+
+
+def _get_openai_client():
+    global _openai_client
+    if _openai_client is None:
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError(
+                "OPENAI_API_KEY is not set. Add it to your .env file if using OpenAI features."
+            )
+        os.environ["OPENAI_API_KEY"] = api_key
+        _openai_client = OpenAI(api_key=api_key)
+    return _openai_client
+
+
+def _get_apify_client():
+    global _apify_client
+    if _apify_client is None:
+        api_key = os.getenv("APIFY_API_KEY")
+        if not api_key:
+            raise ValueError(
+                "APIFY_API_KEY is not set. Add it to your .env file."
+            )
+        _apify_client = ApifyClient(api_key)
+    return _apify_client
 
 def fetch_linkedin_jobs(search_query,location="india",rows=60):
         """
@@ -43,6 +65,7 @@ def fetch_naukri_jobs(search_query,location="india",rows=60):
                 "apifyProxyGroups": ["RESIDENTIAL"],
             }
         }
-        run = apify_client.actor("alpcnRV9YI9lYVPWk").call(run_input=run_input)
-        jobs =list(apify_client.dataset(run["defaultDatasetId"]).iterate_items())
+        apify = _get_apify_client()
+        run = apify.actor("alpcnRV9YI9lYVPWk").call(run_input=run_input)
+        jobs = list(apify.dataset(run["defaultDatasetId"]).iterate_items())
         return jobs
