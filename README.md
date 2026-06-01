@@ -143,3 +143,5 @@ For issues or questions, please open an issue on the repository.
 ---
 
 **Built with ❤️ using Streamlit and Gemini API**
+
+Ritesh
